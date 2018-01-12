@@ -192,9 +192,10 @@ namespace Antilatency {
 				using VariantType = Varint<T>;
 				T temp = 0;
 				size_t i = 0;
+				size_t readSize = 0;
 				while (true) {
 					uint8_t sym;
-					deserialize<uint8_t>(sym);
+					readSize += deserialize<uint8_t>(sym);
 					temp |= static_cast<T>(sym & VariantType::mask) << (VariantType::usedBits * i);
 					if ((sym & (~VariantType::mask)) == 0) {
 						break;
@@ -205,7 +206,7 @@ namespace Antilatency {
 				temp = swapBytes(temp);
 	#endif
 				value.setValue(temp);
-				return i + 1;
+				return readSize;
 			}
 
 			template <typename T>
