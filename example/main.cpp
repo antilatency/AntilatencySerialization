@@ -41,6 +41,8 @@ namespace Environment0 {
 	public:
 		template<typename Deserializer>
 		size_t convertFromPreviousVersion(VersionType version, Deserializer& deserializer) {
+            version;
+            deserializer;
 			return 0;
 		}
 	};
@@ -195,7 +197,7 @@ int main()
 	testBase64Serialization(environment0);
 	testUserStream(environment0);
 
-	std::cin.get();
+    std::cin.get();
 
 	return 0;
 }

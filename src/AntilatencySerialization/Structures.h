@@ -29,6 +29,7 @@ namespace Antilatency {
 			template< typename FirstFieldType, typename RestFieldsType, typename Name>
 			struct Multi {
 				static auto get(FirstFieldType& firstField, RestFieldsType& restFields) -> decltype(restFields.template get<Name>()) {
+                                        firstField;
 					return restFields.template get<Name>();
 				}
 			};
@@ -36,6 +37,7 @@ namespace Antilatency {
 			template<typename FirstFieldType, typename RestFieldsType>
 			struct Multi<FirstFieldType, RestFieldsType, typename FirstFieldType::Name> {
 				static FirstFieldType& get(FirstFieldType& firstField, RestFieldsType& restFields) {
+                                        restFields;
 					return firstField;
 				}
 			};
