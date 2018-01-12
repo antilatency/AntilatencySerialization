@@ -24,9 +24,6 @@
 	#define ANTILATENCY_SERIALIZATION_STL_SUPPORT
 	#include <vector>
 	#include <string>
-	#if !defined(STM32)
-	#define ANTILATENCY_SERIALIZATION_IOSTREAM_SUPPORT
-	#endif
 #endif
 
 namespace Antilatency {

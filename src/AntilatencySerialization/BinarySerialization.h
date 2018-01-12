@@ -9,7 +9,7 @@
 #include "Varint.h"
 #include "BaseTypes.h"
 
-#include "SerializationStreams.h"
+#include "StreamSerialization.h"
 
 namespace Antilatency {
 	namespace Serialization {
@@ -79,16 +79,15 @@ namespace Antilatency {
 	#if SERIALIZATION_BYTE_ORDER == SERIALIZATION_BIG_ENDIAN
 				temp = swapBytes(temp);
 	#endif
-
+				size_t writtenSize = 0;
 				size_t i = 0;
 				while (temp >= VariantType::base) {
-					serialize<uint8_t>((1 << VariantType::usedBits) | (temp & VariantType::mask));
+					writtenSize += serialize<uint8_t>((1 << VariantType::usedBits) | (temp & VariantType::mask));
 					temp >>= VariantType::usedBits;
 					++i;
 				}
-				serialize<uint8_t>(temp & VariantType::mask);
-				++i;
-				return i;
+				writtenSize += serialize<uint8_t>(temp & VariantType::mask);
+				return writtenSize;
 			}
 
 			template <typename T>
@@ -255,6 +254,8 @@ namespace Antilatency {
 		SERIALIZATION_DESERIALIZE_BASE_TYPE(int32_t)
 		SERIALIZATION_DESERIALIZE_BASE_TYPE(uint64_t)
 		SERIALIZATION_DESERIALIZE_BASE_TYPE(int64_t)
+		
+		//Todo optimized version for deserializing container with primary types inside
 
 		template<>
 		inline size_t BinaryDeserializer::deserialize<bool>(bool& value) {

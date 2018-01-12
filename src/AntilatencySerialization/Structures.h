@@ -1,11 +1,15 @@
 #ifndef Structures_H
 #define Structures_H
 
+#include <stdint.h>
+#include <stddef.h>
+#include "Varint.h"
+
+
 namespace Antilatency {
 	namespace Serialization {
 
 #define SERIALIZATION_MAKE_FIELD_NAME(name) class name {public: static constexpr auto FieldName = #name;} 
-
 		namespace detail {
 			template< typename T, typename Name>
 			struct Single {
@@ -86,12 +90,11 @@ namespace Antilatency {
 			}
 		};
 
-		template <uint32_t Version_, typename ChildType, typename ... Fields>
+		template <uint64_t Version_, typename ChildType, typename ... Fields>
 		class VersionedStructure : public Structure<Fields...> {
 		public:
-			virtual ~VersionedStructure() = default;
 
-			using VersionType = Varint32;
+			using VersionType = Varint64;
 
 			static constexpr VersionType Version = Version_;
 
@@ -116,7 +119,7 @@ namespace Antilatency {
 					return Structure<Fields...>::deserialize(deserializer);
 				}
 				else {
-					return static_cast<ChildType*>(this)->convert(version, deserializer);
+					return static_cast<ChildType*>(this)->convertFromPreviousVersion(version, deserializer);
 				}
 			}
 		};

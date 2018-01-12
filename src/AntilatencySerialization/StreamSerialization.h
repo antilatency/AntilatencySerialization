@@ -1,78 +1,96 @@
-#ifndef StreamSerialization_H
-#define StreamSerialization_H
-
-#include "BaseTypes.h"
-
-#if defined(ANTILATENCY_SERIALIZATION_IOSTREAM_SUPPORT)
+#ifndef STREAM_SERIALIZATION_H
+#define STREAM_SERIALIZATION_H
 
 
-#include <type_traits>
-#include <iostream>
 
-#include "Varint.h"
+
+#include <stdint.h>
+#include <stddef.h>
+
+#include <assert.h>
+#include <string.h>
 
 namespace Antilatency {
 	namespace Serialization {
-
-		class IostreamSerializer {
+		
+		class IStreamWriter {
 		public:
-
-			void beginStructure() {
-				std::cout << "{";
-			}
-
-			void endStructure() {
-				std::cout << "}";
-			}
-
-			template<typename T>
-			std::enable_if_t<!std::is_class<T>::value, size_t> serialize(const T& value) {
-				std::cout << value;
-				return 0;
-			}
-
-			template<typename T>
-			std::enable_if_t<std::is_class<T>::value, size_t> serialize(const T& value) {
-				value.serialize(*this);
-				return 0;
-			}
-
-			template <typename T>
-			size_t serialize(const Varint<T>& value) {
-				std::cout << value.getValue();
-				return 0;
-			}
-
-			template <typename T>
-			size_t serialize(const BaseVectorType<T>& value) {
-				serialize('[');
-				for (size_t i = 0; i < value.size(); ++i) {
-					serialize(value[i]);
-					if (i != value.size() - 1) {
-						serialize(',');
-					}
-				}
-				serialize(']');
-				return 0;
-			}
+			virtual ~IStreamWriter() = default;
+			virtual size_t write(const uint8_t* buffer, size_t size) = 0;
 		};
 
-		template<>
-		inline size_t IostreamSerializer::serialize(const bool& value) {
-			std::cout << std::boolalpha << value;
-			return 0;
-		}
+		class IStreamReader {
+		public:
+			virtual ~IStreamReader() = default;
+			virtual size_t read(uint8_t* buffer, size_t size) = 0;
+		};
 
-		template <>
-		inline size_t IostreamSerializer::serialize<BaseStringType>(const BaseStringType& value) {
-			serialize('\"');
-			std::cout << value;
-			serialize('\"');
-			return 0;
-		}
+		class MemoryStreamReader : public IStreamReader {
+		public:
+			MemoryStreamReader(const uint8_t* buffer, size_t capacity) :
+				_buffer(buffer), 
+				_capacity(capacity) 
+			{
+			}
+
+			void setMemory(const uint8_t* buffer, size_t capacity) {
+				_buffer = buffer;
+				_capacity = capacity;
+				_currentPosition = 0;
+			}
+
+			size_t read(uint8_t* buffer, size_t size) override {
+				assert(_currentPosition + size <= _capacity);
+				memcpy(buffer, _buffer + _currentPosition, size);
+				_currentPosition += size;
+				return size;
+			}
+
+		private:
+			const uint8_t* _buffer;
+			size_t _capacity;
+			size_t _currentPosition = 0;
+		};
+
+		class MemoryStreamWriter : public IStreamWriter {
+		public:
+			MemoryStreamWriter(uint8_t* buffer, size_t capacity) :
+				_buffer(buffer),
+				_capacity(capacity)
+			{
+			}
+
+			size_t write(const uint8_t* buffer, size_t size) override {
+				assert(_currentPosition + size <= _capacity);
+				memcpy(_buffer + _currentPosition, buffer, size);
+				_currentPosition += size;
+				return size;
+			}
+
+		private:
+			uint8_t* _buffer;
+			size_t _capacity;
+			size_t _currentPosition = 0;
+		};
+
+		class MemorySizeCounterStream final : public IStreamWriter{
+		public:
+			size_t write(const uint8_t* buffer, size_t size) override {
+				buffer;
+				_totalSize += size;
+				return size;
+			}
+
+			size_t getActualSize() const {
+				return _totalSize;
+			}
+
+		private:
+			size_t _totalSize = 0;
+		};
+
 	}
 }
 
-#endif
 
-#endif // StreamSerialization_H
+#endif // STREAM_SERIALIZATION_H

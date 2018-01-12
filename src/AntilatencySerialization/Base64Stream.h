@@ -4,7 +4,7 @@
 #include <stdint.h>
 #include <stddef.h>
 
-#include "SerializationStreams.h"
+#include "StreamSerialization.h"
 
 namespace Antilatency {
 	namespace Serialization {
@@ -41,10 +41,10 @@ namespace Antilatency {
 			
 		}
 
-		class Base64StreamReader final : public MemoryStreamReader {
+		class Base64StreamReader final : public IStreamReader {
 		public:
-			Base64StreamReader(const uint8_t* buffer, size_t capacity) :
-				MemoryStreamReader(buffer, capacity)
+			explicit Base64StreamReader(IStreamReader* reader) :
+				_reader(reader)
 			{
 
 			}
@@ -57,7 +57,7 @@ namespace Antilatency {
 					read += readBytes;
 					buffer[i] = sym;
 					
-					if (!readBytes || _stopStream) {
+					if (_stopStream) {
 						return read;
 					}
 				}
@@ -88,13 +88,14 @@ namespace Antilatency {
 				default:
 					assert(false);
 				}
-
-				++_currentPosition;
+				if (!_stopStream) {
+					++_currentPosition;
+				}
 				return read;
 			}
 
 			size_t getRealByte(uint8_t& byte) {
-				auto size = MemoryStreamReader::read(&byte, sizeof(uint8_t));
+				auto size = _reader->read(&byte, sizeof(uint8_t));
 				if ( size == sizeof(uint8_t)) {
 					bool isOk;
 					byte = Base64::getPositionFromChar(byte, isOk);
@@ -109,34 +110,29 @@ namespace Antilatency {
 			uint8_t _savedValue = 0;
 			size_t _currentPosition = 0;
 			bool _stopStream = false;
+			IStreamReader* _reader;
 		};
 
-		class Base64StreamWriter final : public MemoryStreamWriter {
+
+		class Base64StreamWriter final : public IStreamWriter {
 		public:
-			Base64StreamWriter(uint8_t* buffer, size_t capacity) :
-				MemoryStreamWriter(buffer, capacity)
+			explicit Base64StreamWriter(IStreamWriter* writer) :
+				_writer(writer)
 			{
 
 			}
-
-			void setMemory(uint8_t* buffer, size_t capacity) {
-				MemoryStreamWriter::setMemory(buffer, capacity);
-				_currentPosition = 0;
-				_savedValue = 0;		
-			}
-			
+		
 			size_t flush() {
 				size_t flushedSize = 0;
-				if(_savedValue) {
+				if(_isSaved) {
 					flushedSize += processStage(0, true);
 				}
 				while (_currentPosition % 3 != 0) {
-					flushedSize += MemoryStreamWriter::write(reinterpret_cast<const uint8_t*>(&Base64::PaddingSymbol), sizeof(char));
+					flushedSize += _writer->write(reinterpret_cast<const uint8_t*>(&Base64::PaddingSymbol), sizeof(char));
 					++_currentPosition;
 				}
 				return flushedSize;
 			}
-
 			size_t write(const uint8_t* buffer, size_t size) override {
 				size_t writen = 0;
 				for(size_t i = 0; i < size; ++i) {
@@ -152,22 +148,25 @@ namespace Antilatency {
 				switch (_currentPosition % 3) {
 				case 0:
 					index = (value & 0xfc) >> 2;
-					writen += MemoryStreamWriter::write(reinterpret_cast<const uint8_t*>(&Base64::LookupTableToChar[index]), sizeof(uint8_t));
+					writen += _writer->write(reinterpret_cast<const uint8_t*>(&Base64::LookupTableToChar[index]), sizeof(uint8_t));
 					_savedValue = value;
+					_isSaved = true;
 					break;
 				case 1:
 					index = ((_savedValue & 0x03) << 4) + ((value & 0xf0) >> 4);
-					writen += MemoryStreamWriter::write(reinterpret_cast<const uint8_t*>(&Base64::LookupTableToChar[index]), sizeof(uint8_t));
+					writen += _writer->write(reinterpret_cast<const uint8_t*>(&Base64::LookupTableToChar[index]), sizeof(uint8_t));
 					_savedValue = value;
+					_isSaved = true;
 					break;
 				case 2:
 					index = ((_savedValue & 0x0f) << 2) + ((value & 0xc0) >> 6);
-					writen += MemoryStreamWriter::write(reinterpret_cast<const uint8_t*>(&Base64::LookupTableToChar[index]), sizeof(uint8_t));
+					writen += _writer->write(reinterpret_cast<const uint8_t*>(&Base64::LookupTableToChar[index]), sizeof(uint8_t));
 					if (!isFlush) {
 						index = value & 0x3f;
-						writen += MemoryStreamWriter::write(reinterpret_cast<const uint8_t*>(&Base64::LookupTableToChar[index]), sizeof(uint8_t));
+						writen += _writer->write(reinterpret_cast<const uint8_t*>(&Base64::LookupTableToChar[index]), sizeof(uint8_t));
 					}
 					_savedValue = 0;
+					_isSaved = false;
 					break;
 				default:
 					assert(false);
@@ -181,6 +180,8 @@ namespace Antilatency {
 		private:
 			size_t _currentPosition = 0;
 			uint8_t _savedValue = 0;
+			bool _isSaved = 0;
+			IStreamWriter* _writer;
 		};
 	}
 }
