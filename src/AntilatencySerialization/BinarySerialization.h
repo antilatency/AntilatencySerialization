@@ -103,7 +103,7 @@ namespace Antilatency {
 		#else
 				T temp = value;
 		#endif
-				return _writer->write(reinterpret_cast<const uint8_t*>(&value), sizeof(value));
+                                return _writer->write(reinterpret_cast<const uint8_t*>(&temp), sizeof(T));
 			}
 
 			template<typename T>
