@@ -63,14 +63,14 @@ namespace Antilatency {
 
 		template<>
 		inline size_t OstreamSerializer::serialize(const bool& value) {
-			std::cout << std::boolalpha << value;
+			_stream << std::boolalpha << value;
 			return 0;
 		}
 
 		template <>
 		inline size_t OstreamSerializer::serialize<BaseStringType>(const BaseStringType& value) {
 			serialize('\"');
-			std::cout << value;
+			_stream << value;
 			serialize('\"');
 			return 0;
 		}
