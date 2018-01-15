@@ -28,25 +28,25 @@ namespace Antilatency {
 			}
 
 			template<typename T>
-			std::enable_if_t<!std::is_class<T>::value, size_t> serialize(const T& value) {
+			std::enable_if_t<!std::is_class<T>::value, bool> serialize(const T& value) {
 				_stream << value;
-				return 0;
+				return true;
 			}
 
 			template<typename T>
-			std::enable_if_t<std::is_class<T>::value, size_t> serialize(const T& value) {
+			std::enable_if_t<std::is_class<T>::value, bool> serialize(const T& value) {
 				value.serialize(*this);
-				return 0;
+				return true;
 			}
 
 			template <typename T>
-			size_t serialize(const Varint<T>& value) {
+			bool serialize(const Varint<T>& value) {
 				_stream << value.getValue();
-				return 0;
+				return true;
 			}
 
 			template <typename T>
-			size_t serialize(const BaseVectorType<T>& value) {
+			bool serialize(const BaseVectorType<T>& value) {
 				serialize('[');
 				for (size_t i = 0; i < value.size(); ++i) {
 					serialize(value[i]);
@@ -55,24 +55,24 @@ namespace Antilatency {
 					}
 				}
 				serialize(']');
-				return 0;
+				return true;
 			}
 		private:
 			std::ostream& _stream;
 		};
 
 		template<>
-		inline size_t OstreamSerializer::serialize(const bool& value) {
-			std::cout << std::boolalpha << value;
-			return 0;
+		inline bool OstreamSerializer::serialize(const bool& value) {
+			_stream << std::boolalpha << value;
+			return true;
 		}
 
 		template <>
-		inline size_t OstreamSerializer::serialize<BaseStringType>(const BaseStringType& value) {
+		inline bool OstreamSerializer::serialize<BaseStringType>(const BaseStringType& value) {
 			serialize('\"');
-			std::cout << value;
+			_stream << value;
 			serialize('\"');
-			return 0;
+			return true;
 		}
 	}
 }

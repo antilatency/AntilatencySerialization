@@ -8,7 +8,7 @@ namespace Antilatency {
 	namespace Serialization {
 		class UserStreamWriter : public IStreamWriter {
 		public:
-			using FunctionType = std::function<size_t(const uint8_t*, size_t)>;
+			using FunctionType = std::function<bool(const uint8_t*, size_t)>;
 
 			explicit UserStreamWriter(FunctionType writeFunction) :
 				_writeFunction(writeFunction)
@@ -16,7 +16,7 @@ namespace Antilatency {
 				
 			}
 
-			size_t write(const uint8_t* buffer, size_t size) override {
+			bool write(const uint8_t* buffer, size_t size) override {
 				return _writeFunction(buffer, size);
 			}
 		private:
@@ -25,7 +25,7 @@ namespace Antilatency {
 
 		class UserStreamReader : public IStreamReader {
 		public:
-			using FunctionType = std::function<size_t(uint8_t*, size_t)>;
+			using FunctionType = std::function<bool(uint8_t*, size_t)>;
 
 			explicit UserStreamReader(FunctionType readFunction) :
 				_readFunction(readFunction)
@@ -33,7 +33,7 @@ namespace Antilatency {
 
 			}
 
-			size_t read(uint8_t* buffer, size_t size) override {
+			bool read(uint8_t* buffer, size_t size) override {
 				return _readFunction(buffer, size);
 			}
 

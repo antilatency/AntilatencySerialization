@@ -28,10 +28,10 @@ namespace SerializationTest
 			uint8_t buffer[32];
 			MemoryStreamWriter writer(buffer, sizeof(buffer));
 			BinarySerializer serializer(&writer);
-			VarintType source = value;
-			serializer.serialize(source);
+			VarintType source{ value };
+			Assert::IsTrue(serializer.serialize(source));
 			VarintType dest;
-			MemoryStreamReader reader(buffer, 32);
+			MemoryStreamReader reader(buffer, sizeof(buffer));
 			BinaryDeserializer deserializer(&reader);
 			deserializer.deserialize(dest);
 
@@ -51,9 +51,9 @@ namespace SerializationTest
 
 		template<typename VarintType>
 		static void testSize(size_t pow) {
-			VarintType value = static_cast<VarintType::Type>(128) << (pow * 7);
+			VarintType value{ static_cast<typename VarintType::Type>(128) << (pow * 7) };
 			Assert::AreEqual(static_cast<size_t>(pow + 2), value.getActualSize());
-			value = value.getValue() - 1;
+			value = VarintType(value.getValue() - 1);
 			Assert::AreEqual(static_cast<size_t>(pow + 1), value.getActualSize());
 		}
 
@@ -114,8 +114,8 @@ namespace SerializationTest
 		}
 
 		TEST_METHOD(MaxValuesSize) {
-			Varint32 val32 = std::numeric_limits<uint32_t>::max();
-			Varint64 val64 = std::numeric_limits<uint64_t>::max();
+			Varint32 val32{ std::numeric_limits<uint32_t>::max() };
+			Varint64 val64{ std::numeric_limits<uint64_t>::max() };
 			Assert::AreEqual(static_cast<size_t>(5), val32.getActualSize());
 			Assert::AreEqual(static_cast<size_t>(10), val64.getActualSize());
 		}

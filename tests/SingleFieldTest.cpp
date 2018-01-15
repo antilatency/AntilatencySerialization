@@ -55,14 +55,12 @@ namespace SerializationTest
 			uint8_t buffer[32];
 			MemoryStreamWriter writer(buffer, sizeof(buffer));
 			BinarySerializer binarySerializer(&writer);
-			auto write = binarySerializer.serialize(src);
+			Assert::IsTrue(binarySerializer.serialize(src));
 			TypeField dst;
-			MemoryStreamReader reader(buffer, write);
+			MemoryStreamReader reader(buffer, 32);
 			BinaryDeserializer deserializer(&reader);
-			auto read = deserializer.deserialize(dst);
+			Assert::IsTrue(deserializer.deserialize(dst));
 			Assert::AreEqual(dst.getValue(), value);
-			Assert::AreEqual(write, read);
-			Assert::AreEqual(sizeof(TypeValue), read);
 		}
 
 		TEST_METHOD(IncValue) {

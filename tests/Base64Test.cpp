@@ -9,6 +9,7 @@
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
 
 #include <type_traits>
+#include <vector>
 
 #include "AntilatencySerialization/Fields.h"
 
@@ -31,11 +32,11 @@ namespace SerializationTest
 			uint8_t* buf = new uint8_t[resultSize];
 			MemoryStreamWriter memoryWriter(buf, resultSize);
 			Base64StreamWriter writer(&memoryWriter);
+			IStreamWriter* iWriter = &writer;
 
-			auto writen = writer.write(base, baseSize);
-			writen += writer.flush();
+			Assert::IsTrue(iWriter->write(base, baseSize));
+			Assert::IsTrue(writer.flush());
 
-			Assert::AreEqual(resultSize, writen);
 
 			for(size_t i = 0; i < resultSize; ++i) {
 				Assert::AreEqual(buf[i], result[i]);
@@ -48,8 +49,9 @@ namespace SerializationTest
 			uint8_t* buf = new uint8_t[realDataSize];
 			MemoryStreamReader memoryReader(encodedData, encodedSize);
 			Base64StreamReader reader(&memoryReader);
+			IStreamReader* iReader = &reader;
 
-			auto readSize = reader.read(buf, realDataSize);
+			Assert::IsTrue(iReader->read(buf, realDataSize));
 
 			for (size_t i = 0; i < realDataSize; ++i) {
 				Assert::AreEqual(realData[i], buf[i]);
@@ -85,25 +87,42 @@ namespace SerializationTest
 
 		TEST_METHOD(EncodeDecode) {
 			for (auto i = 0; i < 100; ++i) {
-				uint8_t base[1024];
-				size_t testSize = rand() % 512;
+				size_t testSize = rand() % 1024;
 
-				for (auto i = 0; i < testSize; ++i) {
+				std::vector<uint8_t> base;
+				base.resize(testSize);
+
+				for (auto i = 0; i < base.size(); ++i) {
 					base[i] = static_cast<uint8_t>(rand());
 				}
 
-				uint8_t buffer[1024];
-				MemoryStreamWriter memoryWriter(buffer, 1024);
-				Base64StreamWriter writer(&memoryWriter);
-				auto writen = writer.write(reinterpret_cast<const uint8_t*>(base), testSize);
-				writen += writer.flush();
+				MemorySizeCounterStream counter;
+				
+				{
+					Base64StreamWriter writer(&counter);
+					IStreamWriter* iWriter = &writer;
+					Assert::IsTrue(iWriter->write(reinterpret_cast<const uint8_t*>(base.data()), base.size()));
+					Assert::IsTrue(writer.flush());
+				}
 
-				MemoryStreamReader memoryReader(buffer, writen);
+				std::vector<uint8_t> buffer;
+				buffer.resize(counter.getActualSize());
+				{
+					MemoryStreamWriter memoryWriter(buffer.data(), buffer.size());
+					Base64StreamWriter writer(&memoryWriter);
+					IStreamWriter* iWriter = &writer;
+					Assert::IsTrue(iWriter->write(reinterpret_cast<const uint8_t*>(base.data()), base.size()));
+					Assert::IsTrue(writer.flush());
+				}
+				
+
+				MemoryStreamReader memoryReader(buffer.data(), buffer.size());
 				Base64StreamReader reader(&memoryReader);
-				uint8_t result[1024];
-				auto read = reader.read(result, testSize);
+				IStreamReader* iReader = &reader;
 
-				//Assert::AreEqual(writen, read);
+				std::vector<uint8_t> result;
+				result.resize(testSize);;
+				Assert::IsTrue(iReader->read(result.data(), result.size()));
 
 				for (size_t i = 0; i < testSize; ++i) {
 					Assert::AreEqual(base[i], result[i]);
@@ -116,14 +135,15 @@ namespace SerializationTest
 			uint8_t buffer[32];
 			MemoryStreamWriter memoryWriter(buffer, sizeof(buffer));
 			Base64StreamWriter writer(&memoryWriter);
-			auto writen = writer.write(reinterpret_cast<const uint8_t*>(&value), sizeof(T));
-			writen += writer.flush();
+			IStreamWriter* iWriter = &writer;
+			Assert::IsTrue(iWriter->write(reinterpret_cast<const uint8_t*>(&value), sizeof(T)));
+			Assert::IsTrue(writer.flush());
 
-			MemoryStreamReader memoryReader(buffer, writen);
+			MemoryStreamReader memoryReader(buffer, 32);
 			Base64StreamReader reader(&memoryReader);
+			IStreamReader* iReader = &reader;
 			T result;
-			auto read = reader.read(reinterpret_cast<uint8_t*>(&result), sizeof(T));
-			Assert::IsTrue(writen - read <= 2);
+			Assert::IsTrue(iReader->read(reinterpret_cast<uint8_t*>(&result), sizeof(T)));
 			Assert::AreEqual(value, result);
 		}
 

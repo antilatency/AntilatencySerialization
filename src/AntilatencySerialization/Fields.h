@@ -2,6 +2,7 @@
 #define Fields_H
 
 #include <stdint.h>
+#include <assert.h>
 #include "BaseTypes.h"
 
 namespace Antilatency {
@@ -24,9 +25,11 @@ namespace Antilatency {
 			const Type& getValue() const {
 				return _value;
 			}
-			Type& getRef() {
+
+			Type& getValue() {
 				return _value;
 			}
+
 			void setValue(const Type& value) {
 				_value = value;
 			}
@@ -54,9 +57,11 @@ namespace Antilatency {
 			const Type& getValue() const {
 				return _value;
 			}
-			Type& getRef() {
+
+			Type& getValue() {
 				return _value;
 			}
+
 			void setValue(const Type& value) {
 				_value = value;
 			}
@@ -86,33 +91,47 @@ namespace Antilatency {
 		template <typename T>
 		class OptioinalField : public T {
 		public:
-			bool exists = false;
+			
 			void setValue(const typename T::Type& value) {
 				T::setValue(value);
-				exists = true;
+				_exists = true;
+			}			
+
+			const typename T::Type& getValue() const {
+				assert(_exists);
+				return T::getValue();
 			}
-			void getRef() = delete;
+
+			typename T::Type& getValue() {
+				assert(_exists);
+				return T::getValue();
+			}
+
+			bool isExists() const {
+				return _exists;
+			}
 
 			template<typename Serializer>
 			size_t serialize(Serializer& serializer) const {
-				if(exists) {
-					return serializer.serialize(exists) + T::serialize(serializer);
+				size_t serializedSize = serializer.serialize(_exists);
+
+				if(_exists) {
+					serializedSize += T::serialize(serializer);
 				}
-				else {
-					return serializer.serialize(exists);
-				}
+
+				return serializedSize;
 			}
 
 			template<typename Deserializer>
 			size_t deserialize(Deserializer& deserializer) {
-				size_t deserializedSize = deserializer.deserialize(exists);
-				if(exists) {
-					return deserializedSize + T::deserialize(deserializer);
+				size_t deserializedSize = deserializer.deserialize(_exists);
+				if(_exists) {
+					deserializedSize += T::deserialize(deserializer);
 				}
-				else {
-					return deserializedSize;
-				}
+				return deserializedSize;
 			}
+		private:
+			bool _exists = false;
 		};
 
 	}

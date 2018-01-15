@@ -49,39 +49,38 @@ namespace Antilatency {
 
 			}
 
-			size_t read(uint8_t* buffer, size_t size) override {
-				size_t read = 0;
+		private:
+			bool read(uint8_t* buffer, size_t size) override {
 				for(size_t i = 0; i < size; ++i) {
 					uint8_t sym;
-					auto readBytes = getSym(sym);
-					read += readBytes;
+					getSym(sym);
 					buffer[i] = sym;
 					
 					if (_stopStream) {
-						return read;
+						return false;
 					}
 				}
-				return read;
+				return true;
 			}
-		private:
-			size_t getSym(uint8_t& sym) {
+		
+			void getSym(uint8_t& sym) {
 				uint8_t firstSym;
 				uint8_t nextSym;
-				size_t read = 0;
+
 				switch (_currentPosition % 3) {
 				case 0:
-					read += getRealByte(firstSym);
-					read += getRealByte(nextSym);
+					getRealByte(firstSym);
+					getRealByte(nextSym);
 					_savedValue = nextSym;
 					sym = (firstSym << 2) | ((nextSym >> 4) & 0x3);
 					break;
 				case 1:
-					read += getRealByte(firstSym);
+					getRealByte(firstSym);
 					sym = (_savedValue << 4) | ((firstSym >> 2) & 0x0F);
 					_savedValue = firstSym;
 					break;
 				case 2:
-					read += getRealByte(firstSym);
+					getRealByte(firstSym);
 					sym = (_savedValue << 6) | (firstSym);
 					_savedValue = 0;
 					break;
@@ -91,19 +90,18 @@ namespace Antilatency {
 				if (!_stopStream) {
 					++_currentPosition;
 				}
-				return read;
 			}
 
-			size_t getRealByte(uint8_t& byte) {
-				auto size = _reader->read(&byte, sizeof(uint8_t));
-				if ( size == sizeof(uint8_t)) {
+			void getRealByte(uint8_t& byte) {
+				if (_reader->read(&byte, sizeof(uint8_t))) {
 					bool isOk;
 					byte = Base64::getPositionFromChar(byte, isOk);
 					if(!isOk) {
 						_stopStream = true;
 					}
+				} else {
+					_stopStream = true;
 				}
-				return size;
 			}
 
 		private:
@@ -122,48 +120,60 @@ namespace Antilatency {
 
 			}
 		
-			size_t flush() {
-				size_t flushedSize = 0;
+			bool flush() {
 				if(_isSaved) {
-					flushedSize += processStage(0, true);
+					if(!processStage(0, true)) {
+						return false;
+					}
 				}
 				while (_currentPosition % 3 != 0) {
-					flushedSize += _writer->write(reinterpret_cast<const uint8_t*>(&Base64::PaddingSymbol), sizeof(char));
+					if(!_writer->write(reinterpret_cast<const uint8_t*>(&Base64::PaddingSymbol), sizeof(char))) {
+						return false;
+					}
 					++_currentPosition;
 				}
-				return flushedSize;
+				return true;
 			}
-			size_t write(const uint8_t* buffer, size_t size) override {
-				size_t writen = 0;
-				for(size_t i = 0; i < size; ++i) {
-					writen += processStage(buffer[i]);
+			
+		private:
+			bool write(const uint8_t* buffer, size_t size) override {
+				for (size_t i = 0; i < size; ++i) {
+					if(!processStage(buffer[i])) {
+						return false;
+					}
 				}
-				return writen;
+				return true;
 			}
 
-		private:
-			size_t processStage(uint8_t value, bool isFlush = false) {
-				size_t writen = 0;
+			bool processStage(uint8_t value, bool isFlush = false) {
 				uint8_t index;
 				switch (_currentPosition % 3) {
 				case 0:
 					index = (value & 0xfc) >> 2;
-					writen += _writer->write(reinterpret_cast<const uint8_t*>(&Base64::LookupTableToChar[index]), sizeof(uint8_t));
+					if(!_writer->write(reinterpret_cast<const uint8_t*>(&Base64::LookupTableToChar[index]), sizeof(uint8_t))) {
+						return false;
+					}
 					_savedValue = value;
 					_isSaved = true;
 					break;
 				case 1:
 					index = ((_savedValue & 0x03) << 4) + ((value & 0xf0) >> 4);
-					writen += _writer->write(reinterpret_cast<const uint8_t*>(&Base64::LookupTableToChar[index]), sizeof(uint8_t));
+					if(!_writer->write(reinterpret_cast<const uint8_t*>(&Base64::LookupTableToChar[index]), sizeof(uint8_t))) {
+						return false;
+					}
 					_savedValue = value;
 					_isSaved = true;
 					break;
 				case 2:
 					index = ((_savedValue & 0x0f) << 2) + ((value & 0xc0) >> 6);
-					writen += _writer->write(reinterpret_cast<const uint8_t*>(&Base64::LookupTableToChar[index]), sizeof(uint8_t));
+					if(!_writer->write(reinterpret_cast<const uint8_t*>(&Base64::LookupTableToChar[index]), sizeof(uint8_t))) {
+						return false;
+					}
 					if (!isFlush) {
 						index = value & 0x3f;
-						writen += _writer->write(reinterpret_cast<const uint8_t*>(&Base64::LookupTableToChar[index]), sizeof(uint8_t));
+						if(!_writer->write(reinterpret_cast<const uint8_t*>(&Base64::LookupTableToChar[index]), sizeof(uint8_t))) {
+							return false;
+						}
 					}
 					_savedValue = 0;
 					_isSaved = false;
@@ -174,7 +184,7 @@ namespace Antilatency {
 				if (!isFlush) {
 					++_currentPosition;
 				}
-				return writen;
+				return true;
 			}
 
 		private:

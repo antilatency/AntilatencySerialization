@@ -12,7 +12,7 @@ namespace Antilatency {
 		
 			constexpr Varint() = default;
 
-			constexpr Varint(const Type& value) : 
+			explicit constexpr Varint(const Type& value) : 
 				_value(value) 
 			{			
 			}

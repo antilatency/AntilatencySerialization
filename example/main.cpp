@@ -40,10 +40,10 @@ namespace Environment0 {
 	class Environment : public Base<Environment> {
 	public:
 		template<typename Deserializer>
-		size_t convertFromPreviousVersion(VersionType version, Deserializer& deserializer) {
-            version;
-            deserializer;
-			return 0;
+		bool convertFromPreviousVersion(VersionType version, Deserializer& deserializer) {
+            static_cast<void>(version);
+			static_cast<void>(deserializer);
+			return false;
 		}
 	};
 }
@@ -67,21 +67,23 @@ namespace Environment1 {
 	class Environment : public Base<Environment> {
 	public:
 		template<typename Deserializer>
-		size_t convertFromPreviousVersion(VersionType version, Deserializer& deserializer) {
+		bool convertFromPreviousVersion(VersionType version, Deserializer& deserializer) {
 			Environment0::Environment previousVersion;
-			size_t size = previousVersion.deserialize(version, deserializer);
+			if(previousVersion.deserialize(version, deserializer)) {
+				get<Type>().setValue(0);
+				get<Width>().setValue(previousVersion.get<Environment0::Width>().getValue());
+				get<Height>().setValue(previousVersion.get<Environment0::Height>().getValue());
+				get<Bars>().setValue(previousVersion.get<Environment0::Bars>().getValue());
 
-			get<Type>().setValue(0);
-			get<Width>().setValue(previousVersion.get<Environment0::Width>().getValue());
-			get<Height>().setValue(previousVersion.get<Environment0::Height>().getValue());
-			get<Bars>().setValue(previousVersion.get<Environment0::Bars>().getValue());
+				return true;
+			}	
 
-			return size;
+			return false;
 		}
 	};
 }
 
-void testBinarySerialization(const Environment0::Environment& env0) {
+size_t testBinarySerialization(const Environment0::Environment& env0) {
 	Antilatency::Serialization::OstreamSerializer ioSerializer(std::cout);
 	Environment1::Environment env1;
 	ioSerializer.serialize(env0);
@@ -89,28 +91,32 @@ void testBinarySerialization(const Environment0::Environment& env0) {
 
 	Antilatency::Serialization::MemorySizeCounterStream counterStream;
 	Antilatency::Serialization::BinarySerializer binSerializer(&counterStream);
+	if (binSerializer.serialize(env0)) {
 
-	size_t realSize = binSerializer.serialize(env0);
-	std::vector<uint8_t> buffer;
-	buffer.resize(realSize);
-	Antilatency::Serialization::MemoryStreamWriter memoryStreamWriter(buffer.data(), buffer.size());
-	binSerializer.setStreamWriter(&memoryStreamWriter);
+		size_t realSize = counterStream.getActualSize();
 
-	auto writeSize = binSerializer.serialize(env0);
+		std::vector<uint8_t> buffer;
+		buffer.resize(realSize);
+		Antilatency::Serialization::MemoryStreamWriter memoryStreamWriter(buffer.data(), buffer.size());
+		binSerializer.setStreamWriter(&memoryStreamWriter);
 
-	Antilatency::Serialization::MemoryStreamReader memoryStreamReader(buffer.data(), writeSize);
-	Antilatency::Serialization::BinaryDeserializer binDeserializer(&memoryStreamReader);
-	auto readSize = binDeserializer.deserialize(env1);
+		if (binSerializer.serialize(env0)) {
+			Antilatency::Serialization::MemoryStreamReader memoryStreamReader(buffer.data(), buffer.size());
+			Antilatency::Serialization::BinaryDeserializer binDeserializer(&memoryStreamReader);
+			if (binDeserializer.deserialize(env1)) {
 
-	ioSerializer.serialize(env1);
-	std::cout << std::endl;
-
-	std::cout << "Binary: Write size " << writeSize << "\t" << "Read size " << readSize << std::endl << std::endl;
+				ioSerializer.serialize(env1);
+				std::cout << std::endl;
+				return buffer.size();
+			}
+		}
+	}
+	
+	return 0;
 }
 
 
-
-void testBase64Serialization(const Environment0::Environment& env0) {
+size_t testBase64Serialization(const Environment0::Environment& env0) {
 	Antilatency::Serialization::OstreamSerializer ioSerializer(std::cout);
 	Environment1::Environment env1;
 
@@ -120,30 +126,34 @@ void testBase64Serialization(const Environment0::Environment& env0) {
 	Antilatency::Serialization::MemorySizeCounterStream counterStream;
 	Antilatency::Serialization::Base64StreamWriter base64StreamCounter(&counterStream);
 	Antilatency::Serialization::BinarySerializer binSerializer(&base64StreamCounter);
+	if(binSerializer.serialize(env0)) {	
+		base64StreamCounter.flush();
 
-	size_t realSize = binSerializer.serialize(env0) + base64StreamCounter.flush();
-	std::vector<uint8_t> buffer;
-	buffer.resize(realSize);
-	Antilatency::Serialization::MemoryStreamWriter memoryStreamWriter(buffer.data(), buffer.size());
-	Antilatency::Serialization::Base64StreamWriter base64StreamWriter(&memoryStreamWriter);
-	binSerializer.setStreamWriter(&base64StreamWriter);
+		size_t realSize = counterStream.getActualSize();
+
+		std::vector<uint8_t> buffer;
+		buffer.resize(realSize);
+		Antilatency::Serialization::MemoryStreamWriter memoryStreamWriter(buffer.data(), buffer.size());
+		Antilatency::Serialization::Base64StreamWriter base64StreamWriter(&memoryStreamWriter);
+		binSerializer.setStreamWriter(&base64StreamWriter);
 	
+		if (binSerializer.serialize(env0)) {
+			base64StreamWriter.flush();
 
-	auto writeSize = binSerializer.serialize(env0) + base64StreamWriter.flush();
-
-
-	Antilatency::Serialization::MemoryStreamReader memoryStreamReader(buffer.data(), writeSize);
-	Antilatency::Serialization::Base64StreamReader base64StreamReader(&memoryStreamReader);
-	Antilatency::Serialization::BinaryDeserializer binDeserializer(&base64StreamReader);
-	auto readSize = binDeserializer.deserialize(env1);
-
-	env1.serialize(ioSerializer);
-	std::cout << std::endl;
-
-	std::cout << "Base64: Write size " << writeSize << "\t" << "Read size " << readSize << std::endl << std::endl;
+			Antilatency::Serialization::MemoryStreamReader memoryStreamReader(buffer.data(), buffer.size());
+			Antilatency::Serialization::Base64StreamReader base64StreamReader(&memoryStreamReader);
+			Antilatency::Serialization::BinaryDeserializer binDeserializer(&base64StreamReader);
+			if (binDeserializer.deserialize(env1)) {
+				env1.serialize(ioSerializer);
+				std::cout << std::endl;
+				return buffer.size();
+			}
+		} 
+	}
+	return 0;
 }
 
-void testUserStream(const Environment0::Environment& env0) {
+size_t testUserStream(const Environment0::Environment& env0) {
 	Antilatency::Serialization::OstreamSerializer ioSerializer(std::cout);
 	ioSerializer.serialize(env0);
 	std::cout << std::endl;
@@ -157,45 +167,56 @@ void testUserStream(const Environment0::Environment& env0) {
 	});
 
 	Antilatency::Serialization::BinarySerializer binSerializer(&vectorWriter);
-	auto writeSize = binSerializer.serialize(env0);
+	if (binSerializer.serialize(env0)) {
 
-	size_t readIndex = 0;
-	Antilatency::Serialization::UserStreamReader vectorReader([&binData, &readIndex](uint8_t* buffer, size_t size) -> size_t {
-		for (size_t i = 0; i < size; ++i) {
-			buffer[i] = binData.at(readIndex);
-			++readIndex;
+		size_t readIndex = 0;
+		Antilatency::Serialization::UserStreamReader vectorReader([&binData, &readIndex](uint8_t* buffer, size_t size) -> size_t {
+			for (size_t i = 0; i < size; ++i) {
+				buffer[i] = binData.at(readIndex);
+				++readIndex;
+			}
+			return size;
+		});
+		Antilatency::Serialization::BinaryDeserializer binDeserializer(&vectorReader);
+		Environment1::Environment env1;
+		if (binDeserializer.deserialize(env1)) {
+			ioSerializer.serialize(env1);
+			std::cout << std::endl;
+			return binData.size();
 		}
-		return size;
-	});
-	Antilatency::Serialization::BinaryDeserializer binDeserializer(&vectorReader);
-	Environment1::Environment env1;
-	auto readSize = binDeserializer.deserialize(env1);
-
-	ioSerializer.serialize(env1);
-	std::cout << std::endl;
-
-	std::cout << "User Stream: Write size " << writeSize << "\t" << "Read size " << readSize << std::endl << std::endl;
+	}
+	return 0;
 }
 
+void testConst(const Environment0::Environment environment) {
+	using namespace Environment0;
+	auto& name = environment.get<Name>().getValue();
+	auto& width = environment.get<Width>().getValue();
+	auto& height = environment.get<Height>().getValue();
+	auto& bars = environment.get<Bars>().getValue();
+}
 
 int main()
 {
-	Environment0::Environment environment0;
-	environment0.get<Environment0::Name>().setValue("Enviroment0");
-	environment0.get<Environment0::Width>().setValue(16);
-	environment0.get<Environment0::Height>().setValue(12);
-	auto& bars = environment0.get<Environment0::Bars>().getRef();
+	using namespace Environment0;
+	Environment environment;	
+	environment.get<Name>().setValue("Enviroment0");
+	environment.get<Width>().setValue(16);
+	environment.get<Height>().setValue(12);
+	auto& bars = environment.get<Bars>().getValue();
 	bars.resize(5);
 
-	for (size_t i = 0; i < environment0.get<Environment0::Bars>().getValue().size(); ++i) {
+	for (size_t i = 0; i < environment.get<Bars>().getValue().size(); ++i) {
 		bars[i].get<Bar::PositionX>().setValue(static_cast<int32_t>(i));
 		bars[i].get<Bar::PositionY>().setValue(static_cast<int32_t>(i));
 		bars[i].get<Bar::Direction>().setValue(static_cast<int32_t>(i));
 	}
+	
+	std::cout << "Binary size = " << testBinarySerialization(environment) << std::endl << std::endl;
+	std::cout << "Base64 size = " << testBase64Serialization(environment) << std::endl << std::endl;
+	std::cout << "User stream size = " << testUserStream(environment) << std::endl << std::endl;
 
-	testBinarySerialization(environment0);
-	testBase64Serialization(environment0);
-	testUserStream(environment0);
+	testConst(environment);
 
     std::cin.get();
 

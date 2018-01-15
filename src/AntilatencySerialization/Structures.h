@@ -17,6 +17,11 @@ namespace Antilatency {
 					static_assert(sizeof(Name) != sizeof(Name), "Field is not supported");
 					return value;
 				}
+
+				static const T& get(const T& value) {
+					static_assert(sizeof(Name) != sizeof(Name), "Field is not supported");
+					return value;
+				}
 			};
 
 			template< typename T >
@@ -24,20 +29,35 @@ namespace Antilatency {
 				static T& get(T& value) {
 					return value;
 				}
+
+				static const T& get(const T& value) {
+					return value;
+				}
 			};
 
 			template< typename FirstFieldType, typename RestFieldsType, typename Name>
 			struct Multi {
 				static auto get(FirstFieldType& firstField, RestFieldsType& restFields) -> decltype(restFields.template get<Name>()) {
-                                        firstField;
+					firstField;
+					return restFields.template get<Name>();
+				}
+
+				static auto get(const FirstFieldType& firstField, const RestFieldsType& restFields) -> decltype(restFields.template get<Name>()) {
+					firstField;
 					return restFields.template get<Name>();
 				}
 			};
 
 			template<typename FirstFieldType, typename RestFieldsType>
 			struct Multi<FirstFieldType, RestFieldsType, typename FirstFieldType::Name> {
+
 				static FirstFieldType& get(FirstFieldType& firstField, RestFieldsType& restFields) {
-                                        restFields;
+					restFields;
+					return firstField;
+				}
+
+				static const FirstFieldType& get(const FirstFieldType& firstField, const RestFieldsType& restFields) {
+					restFields;
 					return firstField;
 				}
 			};
@@ -53,18 +73,30 @@ namespace Antilatency {
 			auto get() -> decltype(detail::Multi<FirstField, Structure<Fields...>, Name>::get(firstField, restFields)) {
 				return detail::Multi<FirstField, Structure<Fields...>, Name>::get(firstField, restFields);
 			}
-			
+
+			template<typename Name>
+			auto get() const -> decltype(detail::Multi<FirstField, Structure<Fields...>, Name>::get(firstField, restFields)) {
+				return detail::Multi<FirstField, Structure<Fields...>, Name>::get(firstField, restFields);
+			}
+		
 			template<typename Serializer>
-			size_t serialize(Serializer& serializer) const {
+			bool serialize(Serializer& serializer) const {
 				serializer.beginStructure();
-				auto result = firstField.serialize(serializer) + restFields.serialize(serializer);
-				serializer.endStructure();
-				return result;
+				if(firstField.serialize(serializer)) {
+					if(restFields.serialize(serializer)) {
+						serializer.endStructure();
+						return true;
+					}
+				}		
+				return false;
 			}
 
 			template<typename Deserializer>
-			size_t deserialize(Deserializer& deserializer) {
-				return firstField.deserialize(deserializer) + restFields.deserialize(deserializer);
+			bool deserialize(Deserializer& deserializer) {
+				if(firstField.deserialize(deserializer)) {
+					return restFields.deserialize(deserializer);
+				}
+				return false;
 			}
 		};		
 
@@ -77,17 +109,24 @@ namespace Antilatency {
 				return detail::Single<FirstField, Name>::get(firstField);
 			}
 
+			template<typename Name>
+			const FirstField& get() const {
+				return detail::Single<FirstField, Name>::get(firstField);
+			}
+
 
 			template<typename Serializer>
-			size_t serialize(Serializer& serializer) const {
+			bool serialize(Serializer& serializer) const {
 				serializer.beginStructure();
-				auto result = firstField.serialize(serializer);
-				serializer.endStructure();
-				return result;
+				if (firstField.serialize(serializer)) {
+					serializer.endStructure();
+					return true;
+				}
+				return false;
 			}
 
 			template<typename Deserializer>
-			size_t deserialize(Deserializer& deserializer) {
+			bool deserialize(Deserializer& deserializer) {
 				return firstField.deserialize(deserializer);
 			}
 		};
@@ -98,30 +137,36 @@ namespace Antilatency {
 
 			using VersionType = Varint64;
 
-			static constexpr VersionType Version = Version_;
+			static constexpr VersionType Version { Version_ };
 
 			template<typename Serializer>
-			size_t serialize(Serializer& serializer) const {	
+			bool serialize(Serializer& serializer) const {	
 				serializer.beginStructure();
-				auto result = serializer.serialize(Version) + Structure<Fields...>::serialize(serializer);
-				serializer.endStructure();
-				return result;
+				if(serializer.serialize(Version)) {
+					if(Structure<Fields...>::serialize(serializer)) {
+						serializer.endStructure();
+						return true;
+					}
+				}		
+				return false;
 			}
 
 			template<typename Deserializer>
-			size_t deserialize(Deserializer& deserializer) {
+			bool deserialize(Deserializer& deserializer) {
 				VersionType version;
-				size_t desirializedSize = deserializer.deserialize(version);
-				return desirializedSize + deserialize(version, deserializer);
+				if(deserializer.deserialize(version)) {
+					return deserialize(version, deserializer);
+				}
+				return false;
 			}
 
 			template<typename Deserializer>
-			size_t deserialize(VersionType version, Deserializer& deserializer) {
+			bool deserialize(VersionType version, Deserializer& deserializer) {
 				if (version == Version) {
 					return Structure<Fields...>::deserialize(deserializer);
 				}
 				else {
-					return static_cast<ChildType*>(this)->convertFromPreviousVersion(version, deserializer);
+					return reinterpret_cast<ChildType*>(this)->convertFromPreviousVersion(version, deserializer);
 				}
 			}
 		};

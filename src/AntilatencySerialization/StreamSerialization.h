@@ -7,7 +7,6 @@
 #include <stdint.h>
 #include <stddef.h>
 
-#include <assert.h>
 #include <string.h>
 
 namespace Antilatency {
@@ -16,13 +15,13 @@ namespace Antilatency {
 		class IStreamWriter {
 		public:
 			virtual ~IStreamWriter() = default;
-			virtual size_t write(const uint8_t* buffer, size_t size) = 0;
+			virtual bool write(const uint8_t* buffer, size_t size) = 0;
 		};
 
 		class IStreamReader {
 		public:
 			virtual ~IStreamReader() = default;
-			virtual size_t read(uint8_t* buffer, size_t size) = 0;
+			virtual bool read(uint8_t* buffer, size_t size) = 0;
 		};
 
 		class MemoryStreamReader : public IStreamReader {
@@ -33,17 +32,16 @@ namespace Antilatency {
 			{
 			}
 
-			void setMemory(const uint8_t* buffer, size_t capacity) {
-				_buffer = buffer;
-				_capacity = capacity;
-				_currentPosition = 0;
-			}
 
-			size_t read(uint8_t* buffer, size_t size) override {
-				assert(_currentPosition + size <= _capacity);
-				memcpy(buffer, _buffer + _currentPosition, size);
-				_currentPosition += size;
-				return size;
+
+		private:
+			bool read(uint8_t* buffer, size_t size) override {
+				if (_currentPosition + size <= _capacity) {
+					memcpy(buffer, _buffer + _currentPosition, size);
+					_currentPosition += size;
+					return true;
+				}
+				return false;
 			}
 
 		private:
@@ -60,11 +58,15 @@ namespace Antilatency {
 			{
 			}
 
-			size_t write(const uint8_t* buffer, size_t size) override {
-				assert(_currentPosition + size <= _capacity);
-				memcpy(_buffer + _currentPosition, buffer, size);
-				_currentPosition += size;
-				return size;
+		private:
+			bool write(const uint8_t* buffer, size_t size) override {
+				if(_currentPosition + size <= _capacity) {
+					memcpy(_buffer + _currentPosition, buffer, size);
+					_currentPosition += size;
+					return true;
+				}
+
+				return false;
 			}
 
 		private:
@@ -74,13 +76,14 @@ namespace Antilatency {
 		};
 
 		class MemorySizeCounterStream final : public IStreamWriter{
-		public:
-			size_t write(const uint8_t* buffer, size_t size) override {
+
+		private:
+			bool write(const uint8_t* buffer, size_t size) override {
 				buffer;
 				_totalSize += size;
-				return size;
+				return true;
 			}
-
+		public:
 			size_t getActualSize() const {
 				return _totalSize;
 			}

@@ -29,15 +29,15 @@ namespace SerializationTest
 			vectorField.setValue(t);
 			MemorySizeCounterStream counterStream;
 			BinarySerializer serializer(&counterStream);
-			serializer.serialize(vectorField);
+			Assert::IsTrue(serializer.serialize(vectorField));
 			uint8_t* buffer = new uint8_t[counterStream.getActualSize()];
 			MemoryStreamWriter writer(buffer, counterStream.getActualSize());
 			serializer.setStreamWriter(&writer);
-			auto writeSize = serializer.serialize(vectorField);
-			MemoryStreamReader reader(buffer, writeSize);
+			Assert::IsTrue(serializer.serialize(vectorField));
+			MemoryStreamReader reader(buffer, counterStream.getActualSize());
 			BinaryDeserializer deserializer(&reader);
 			Type dest;
-			deserializer.deserialize(dest);
+			Assert::IsTrue(deserializer.deserialize(dest));
 
 			Assert::AreEqual(t.size(), dest.size());
 

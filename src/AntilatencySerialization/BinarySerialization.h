@@ -14,12 +14,12 @@
 namespace Antilatency {
 	namespace Serialization {
 
-#define SERIALIZATION_SERIALIZE_BASE_TYPE(type)  template<> inline size_t BinarySerializer::serialize<type>(const type& value) { return write(value); }
-#define SERIALIZATION_DESERIALIZE_BASE_TYPE(type)  template<> inline size_t BinaryDeserializer::deserialize<type>(type& value) { return read(value); }
+#define SERIALIZATION_SERIALIZE_BASE_TYPE(type)  template<> inline bool BinarySerializer::serialize<type>(const type& value) { return write(value); }
+#define SERIALIZATION_DESERIALIZE_BASE_TYPE(type)  template<> inline bool BinaryDeserializer::deserialize<type>(type& value) { return read(value); }
 
-#define SERIALIZATION_SERIALIZE_CONTAINER_BASE_TYPE(type) template<> inline size_t BinarySerializer::serialize<type>(const BaseVectorType<type>& value) { return serializeNativeContainer<BaseVectorType<type>,type>(value, value.size()); }
+#define SERIALIZATION_SERIALIZE_CONTAINER_BASE_TYPE(type) template<> inline bool BinarySerializer::serialize<type>(const BaseVectorType<type>& value) { return serializeNativeContainer<BaseVectorType<type>,type>(value, value.size()); }
 
-#define SERIALIZATION_SERIALIZE_SIGNED_VARINT(type) template<> inline size_t BinarySerializer::serialize<type>(const Varint<type>& value) { \
+#define SERIALIZATION_SERIALIZE_SIGNED_VARINT(type) template<> inline bool BinarySerializer::serialize<type>(const Varint<type>& value) { \
 			auto temp = value.getValue();\
 			if (temp < 0) {\
 				temp = (-temp << 1) - 1;\
@@ -29,17 +29,19 @@ namespace Antilatency {
 			}\
 			return serialize(Varint<u##type>(temp));\
 		}
-#define SERIALIZATION_DESERIALIZE_SIGNED_VARINT(type) template<> inline size_t BinaryDeserializer::deserialize<type>(Varint<type>& value) { \
+#define SERIALIZATION_DESERIALIZE_SIGNED_VARINT(type) template<> inline bool BinaryDeserializer::deserialize<type>(Varint<type>& value) { \
 			Varint<u##type> temp;\
-			size_t size = deserialize(temp);\
-			u##type unsignedValue = temp.getValue();\
-			if (unsignedValue & 1) {\
-				value = -(static_cast<type>(((unsignedValue) >> 1) + 1)); \
+			if(deserialize(temp)) {\
+				u##type unsignedValue = temp.getValue();\
+				if (unsignedValue & 1) {\
+					value.setValue(-(static_cast<type>(((unsignedValue) >> 1) + 1))); \
+				}\
+				else {\
+					value.setValue(unsignedValue >> 1);\
+				}\
+				return true;\
 			}\
-			else {\
-				value = unsignedValue >> 1;\
-			}\
-			return size;\
+			return false;\
 		}
 
 		class BinarySerializer {
@@ -66,65 +68,72 @@ namespace Antilatency {
 			}
 
 			template<typename T>
-			size_t serialize(const T& value) {
-				auto serializedSize = value.serialize(*this);
-				return serializedSize;
+			bool serialize(const T& value) {
+				return value.serialize(*this);
 			}			
 
 			template <typename T>
-			size_t serialize(const Varint<T>& value) {
+			bool serialize(const Varint<T>& value) {
 				using VariantType = Varint<T>;
 				T temp = value.getValue();
 
 	#if SERIALIZATION_BYTE_ORDER == SERIALIZATION_BIG_ENDIAN
 				temp = swapBytes(temp);
 	#endif
-				size_t writtenSize = 0;
 				size_t i = 0;
 				while (temp >= VariantType::base) {
-					writtenSize += serialize<uint8_t>((1 << VariantType::usedBits) | (temp & VariantType::mask));
+					if(!serialize<uint8_t>((1 << VariantType::usedBits) | (temp & VariantType::mask))) {
+						return false;
+					}
 					temp >>= VariantType::usedBits;
 					++i;
 				}
-				writtenSize += serialize<uint8_t>(temp & VariantType::mask);
-				return writtenSize;
+				return serialize<uint8_t>(temp & VariantType::mask);
 			}
 
 			template <typename T>
-			size_t serialize(const BaseVectorType<T>& value) {
+			bool serialize(const BaseVectorType<T>& value) {
 				return serializeContainer(value, value.size());
 			}
 
 		private:
 			template<typename T>
-			size_t write(const T& value) {
+			bool write(const T& value) {
 		#if SERIALIZATION_BYTE_ORDER == SERIALIZATION_BIG_ENDIAN
 				T temp = swapBytes(value);
 		#else
 				T temp = value;
 		#endif
-                                return _writer->write(reinterpret_cast<const uint8_t*>(&temp), sizeof(T));
+				return _writer->write(reinterpret_cast<const uint8_t*>(&temp), sizeof(T));
 			}
 
 			template<typename T>
-			size_t serializeContainer(const T &value, size_t containerSize) {
-				auto written = serialize(Varint64(containerSize));
-				for (size_t i = 0; i < containerSize; ++i) {
-					written += serialize(value[i]);
+			bool serializeContainer(const T &value, size_t containerSize) {
+				if(!serialize(Varint64(containerSize))) {
+					return false;
 				}
-				return written;
+				for (size_t i = 0; i < containerSize; ++i) {
+					if(!serialize(value[i])) {
+						return false;
+					}
+				}
+				return true;
 			}
 
 
 		#if SERIALIZATION_BYTE_ORDER == SERIALIZATION_LITTLE_ENDIAN
 			template<typename T, typename ItemType>
-			size_t serializeNativeContainer(const T &value, size_t containerSize) {
-				auto written = serialize(Varint64(containerSize));
+			bool serializeNativeContainer(const T &value, size_t containerSize) {
+				if(!serialize(Varint64(containerSize))) {
+					return false;
+				}
 				auto itemsSize = sizeof(ItemType) * containerSize;
 				if (itemsSize) {
-					written += _writer->write(reinterpret_cast<const uint8_t*>(&value[0]), itemsSize);
+					if(!_writer->write(reinterpret_cast<const uint8_t*>(&value[0]), itemsSize)) {
+						return false;
+					}
 				}
-				return written;
+				return true;
 			}
 		#endif
 		private:
@@ -153,12 +162,12 @@ namespace Antilatency {
 #endif
 
 		template<>
-		inline size_t BinarySerializer::serialize<bool>(const bool& value) {
+		inline bool BinarySerializer::serialize<bool>(const bool& value) {
 			return serialize(static_cast<uint8_t>(value));
 		}
 
 		template <>
-		inline size_t BinarySerializer::serialize<BaseStringType>(const BaseStringType& value) {
+		inline bool BinarySerializer::serialize<BaseStringType>(const BaseStringType& value) {
 			return serializeContainer(value, value.length());
 		}
 		
@@ -182,20 +191,20 @@ namespace Antilatency {
 			}
 
 			template<typename T>
-			size_t deserialize(T& value) {
-				auto deserializedSize = value.deserialize(*this);
-				return deserializedSize;
+			bool deserialize(T& value) {
+				return value.deserialize(*this);
 			}
 
 			template <typename T>
-			size_t deserialize(Varint<T>& value) {
+			bool deserialize(Varint<T>& value) {
 				using VariantType = Varint<T>;
 				T temp = 0;
 				size_t i = 0;
-				size_t readSize = 0;
 				while (true) {
 					uint8_t sym;
-					readSize += deserialize<uint8_t>(sym);
+					if(!deserialize<uint8_t>(sym)) {
+						return false;
+					}
 					temp |= static_cast<T>(sym & VariantType::mask) << (VariantType::usedBits * i);
 					if ((sym & (~VariantType::mask)) == 0) {
 						break;
@@ -206,40 +215,47 @@ namespace Antilatency {
 				temp = swapBytes(temp);
 	#endif
 				value.setValue(temp);
-				return readSize;
+				return true;
 			}
 
 			template <typename T>
-			size_t deserialize(BaseVectorType<T>& value) {
+			bool deserialize(BaseVectorType<T>& value) {
 				return deserializeContainer(value);
 			}		
 			
 		private:
 			template<typename T>
-			size_t read(T& value) {
+			bool read(T& value) {
 				T temp;
-				auto size = _reader->read(reinterpret_cast<uint8_t *>(&temp), sizeof(T));
-	#if SERIALIZATION_BYTE_ORDER == SERIALIZATION_BIG_ENDIAN
-				value = swapBytes(temp);
-	#else
-				value = temp;
-	#endif
-				return size;
+				if (_reader->read(reinterpret_cast<uint8_t *>(&temp), sizeof(T))) {
+					#if SERIALIZATION_BYTE_ORDER == SERIALIZATION_BIG_ENDIAN
+						value = swapBytes(temp);
+					#else
+						value = temp;
+					#endif
+					return true;
+				}
+				return false;
 			}
 
 			template<typename T>
-			size_t deserializeContainer(T &value) {
+			bool deserializeContainer(T& value) {
 				Varint64 containerSize;
-				auto deserializedSize = deserialize(containerSize);
+				if(!deserialize(containerSize)) {
+					return false;
+				}
+
 				#if defined(ARDUINO) //Todo arduino string has resize only
 					value.reserve(static_cast<size_t>(containerSize.getValue()));
 				#else
 					value.resize(static_cast<size_t>(containerSize.getValue()));
 				#endif
-				for (size_t i = 0; i < containerSize; ++i) {
-					deserializedSize += deserialize(value[i]);
+				for (size_t i = 0; i < containerSize.getValue(); ++i) {
+					if(!deserialize(value[i])) {
+						return false;
+					}
 				}
-				return deserializedSize;
+				return true;
 			}
 		private:
 			IStreamReader* _reader;
@@ -259,15 +275,17 @@ namespace Antilatency {
 		//Todo optimized version for deserializing container with primary types inside
 
 		template<>
-		inline size_t BinaryDeserializer::deserialize<bool>(bool& value) {
+		inline bool BinaryDeserializer::deserialize<bool>(bool& value) {
 			uint8_t temp;
-			size_t size = deserialize<uint8_t>(temp);
+			if(!deserialize(temp)) {
+				return false;
+			}
 			value = static_cast<bool>(temp);
-			return size;
+			return true;
 		}
-
+		
 		template <>
-		inline size_t BinaryDeserializer::deserialize<BaseStringType>(BaseStringType& value) {
+		inline bool BinaryDeserializer::deserialize<BaseStringType>(BaseStringType& value) {
 			return deserializeContainer(value);
 		}
 
