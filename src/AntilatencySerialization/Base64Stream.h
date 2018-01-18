@@ -37,72 +37,75 @@ namespace Antilatency {
 				isOk = false;
 				return 0;
 			}
-
-			
 		}
+
+        namespace Base64UrlConverterSymbols {
+            static constexpr char ProhibitedSymbols[] = {'+', '/'};
+            static constexpr char PermittedSymbols[] = {'-', '_'};
+            static constexpr size_t SymbolsCount = sizeof(ProhibitedSymbols);
+            static_assert(sizeof(ProhibitedSymbols) == sizeof(PermittedSymbols), "Wrong table in base64 url");
+        }
 
 		class Base64StreamReader final : public IStreamReader {
 		public:
-			explicit Base64StreamReader(IStreamReader* reader) :
-				_reader(reader)
-			{
+            explicit Base64StreamReader(IStreamReader* reader) : _reader(reader){
 
-			}
+            }
 
 		private:
-			bool read(uint8_t* buffer, size_t size) override {
-				for(size_t i = 0; i < size; ++i) {
-					uint8_t sym;
-					getSym(sym);
-					buffer[i] = sym;
-					
-					if (_stopStream) {
-						return false;
-					}
-				}
-				return true;
-			}
+            bool read(uint8_t* buffer, size_t size) override{
+                for(size_t i = 0; i < size; ++i) {
+                    uint8_t sym;
+                    getSym(sym);
+                    buffer[i] = sym;
+
+                    if (_stopStream) {
+                        return false;
+                    }
+                }
+                return true;
+            }
 		
-			void getSym(uint8_t& sym) {
-				uint8_t firstSym;
-				uint8_t nextSym;
+            void getSym(uint8_t& sym){
+                uint8_t firstSym;
+                uint8_t nextSym;
 
-				switch (_currentPosition % 3) {
-				case 0:
-					getRealByte(firstSym);
-					getRealByte(nextSym);
-					_savedValue = nextSym;
-					sym = (firstSym << 2) | ((nextSym >> 4) & 0x3);
-					break;
-				case 1:
-					getRealByte(firstSym);
-					sym = (_savedValue << 4) | ((firstSym >> 2) & 0x0F);
-					_savedValue = firstSym;
-					break;
-				case 2:
-					getRealByte(firstSym);
-					sym = (_savedValue << 6) | (firstSym);
-					_savedValue = 0;
-					break;
-				default:
-					assert(false);
-				}
-				if (!_stopStream) {
-					++_currentPosition;
-				}
-			}
+                switch (_currentPosition % 3) {
+                case 0:
+                    getRealByte(firstSym);
+                    getRealByte(nextSym);
+                    _savedValue = nextSym;
+                    sym = (firstSym << 2) | ((nextSym >> 4) & 0x3);
+                    break;
+                case 1:
+                    getRealByte(firstSym);
+                    sym = (_savedValue << 4) | ((firstSym >> 2) & 0x0F);
+                    _savedValue = firstSym;
+                    break;
+                case 2:
+                    getRealByte(firstSym);
+                    sym = (_savedValue << 6) | (firstSym);
+                    _savedValue = 0;
+                    break;
+                default:
+                    assert(false);
+                }
+                if (!_stopStream) {
+                    ++_currentPosition;
+                }
+            }
 
-			void getRealByte(uint8_t& byte) {
-				if (_reader->read(&byte, sizeof(uint8_t))) {
-					bool isOk;
-					byte = Base64::getPositionFromChar(byte, isOk);
-					if(!isOk) {
-						_stopStream = true;
-					}
-				} else {
-					_stopStream = true;
-				}
-			}
+            void getRealByte(uint8_t& byte){
+                if (_reader->read(&byte, sizeof(uint8_t))) {
+                    bool isOk;
+                    byte = Base64::getPositionFromChar(byte, isOk);
+                    if(!isOk) {
+                        _stopStream = true;
+                    }
+                } else {
+                    _stopStream = true;
+                }
+            }
 
 		private:
 			uint8_t _savedValue = 0;
@@ -193,7 +196,74 @@ namespace Antilatency {
 			bool _isSaved = 0;
 			IStreamWriter* _writer;
 		};
-	}
+
+        class Base64UrlConverterReader final : public IStreamReader {
+        public:
+            explicit Base64UrlConverterReader(IStreamReader* reader) :
+                    _reader(reader)
+            {
+
+            }
+        private:
+            bool read(uint8_t* buffer, size_t size) override {
+                for(size_t i = 0; i < size; ++i) {
+
+                    uint8_t val;
+                    auto result = _reader->read(&val, sizeof(uint8_t));
+                    if(!result){
+                        return false;
+                    }
+
+                    auto convertStatus = false;
+                    for(size_t j = 0; j < Base64UrlConverterSymbols::SymbolsCount; j++) {
+                        if(val == static_cast<uint8_t>(Base64UrlConverterSymbols::PermittedSymbols[j])){
+                            buffer[i] = static_cast<uint8_t>(Base64UrlConverterSymbols::ProhibitedSymbols[j]);
+                            convertStatus = true;
+                        }
+                    }
+                    if(!convertStatus) {
+                        buffer[i] = val;
+                    }
+                }
+                return true;
+            }
+
+            IStreamReader* _reader;
+        };
+
+        class Base64UrlConverterWriter final : public IStreamWriter {
+        public:
+            explicit Base64UrlConverterWriter(IStreamWriter* writer) :
+                    _writer(writer)
+            {
+
+            }
+        private:
+            bool write(const uint8_t* buffer, size_t size) override {
+
+                for (size_t i = 0; i < size; ++i) {
+                    if(buffer[i] != '=') {
+                        auto result = false;
+                        auto convertStatus = false;
+                        for(size_t j = 0; j < Base64UrlConverterSymbols::SymbolsCount; j++){
+                            if(buffer[i] == static_cast<uint8_t>(Base64UrlConverterSymbols::ProhibitedSymbols[j])){
+                                result = _writer->write(reinterpret_cast<const uint8_t*>(&Base64UrlConverterSymbols::PermittedSymbols[j]), sizeof(uint8_t));
+                                convertStatus = true;
+                            }
+                        }
+                        if(!convertStatus){
+                            result = _writer->write(reinterpret_cast<const uint8_t*>(&buffer[i]), sizeof(uint8_t));
+                        }
+                        if(!result){
+                            return result;
+                        }
+                    }
+                }
+                return true;
+            }
+            IStreamWriter* _writer;
+        };
+    }
 }
 
 #endif // Base64Stream_H

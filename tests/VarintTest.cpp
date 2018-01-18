@@ -14,8 +14,6 @@ using namespace Antilatency::Serialization;
 
 namespace SerializationTest
 {	
-	
-
 	TEST_CLASS(VarintTest)
 	{
 		TEST_CLASS_INITIALIZE(Init) {

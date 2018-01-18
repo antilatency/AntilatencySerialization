@@ -97,7 +97,7 @@ namespace SerializationTest
 				}
 
 				MemorySizeCounterStream counter;
-				
+				 
 				{
 					Base64StreamWriter writer(&counter);
 					IStreamWriter* iWriter = &writer;
