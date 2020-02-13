@@ -2,7 +2,6 @@
 #define BaseTypes_H
 
 
-
 #define SERIALIZATION_LITTLE_ENDIAN 1
 #define SERIALIZATION_BIG_ENDIAN 2
 
