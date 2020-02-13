@@ -89,5 +89,4 @@ namespace SerializationTest
 			testValue(var);
 		}
 	};
-
 }
